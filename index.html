@@ -1621,7 +1621,7 @@
         async function sendTestOtp() {
             const email = document.getElementById('regEmail').value.trim().toLowerCase();
             const status = document.getElementById('otpTestStatus');
-            if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                 status.textContent = 'Vui lòng nhập Email hợp lệ trước.'; return;
             }
             const btn = document.getElementById('sendOtpButton');
@@ -1638,7 +1638,7 @@
             const email = document.getElementById('regEmail').value.trim().toLowerCase();
             const otp = document.getElementById('regOtp').value.trim();
             const status = document.getElementById('otpTestStatus');
-            if (!/^\\d{6}$/.test(otp)) { status.textContent = 'Mã OTP phải gồm đúng 6 chữ số.'; return; }
+            if (!/^\d{6}$/.test(otp)) { status.textContent = 'Mã OTP phải gồm đúng 6 chữ số.'; return; }
             const btn = document.getElementById('verifyOtpButton'); btn.disabled = true;
             try {
                 const data = await apiRequest('/api/otp/verify', 'POST', { email, type: 'register', otp, otpCode: otp, code: otp });
