@@ -147,7 +147,7 @@
     </div>
 
 
-    <div class="bg-amber-50 border-b border-amber-200 text-amber-900 text-center text-xs px-4 py-2">BẢN THỬ NGHIỆM V2 — Chỉ kết nối Worker/D1 thpt-tieula-v2-test, không kết nối dữ liệu tài khoản website chính. Bài viết và bình luận vẫn là dữ liệu minh họa/cục bộ.</div>
+    <div class="bg-amber-50 border-b border-amber-200 text-amber-900 text-center text-xs px-4 py-2">BẢN THỬ NGHIỆM V3.0 — Bài viết và bảng tin mới kết nối Cloudflare D1 TEST. Không sử dụng dữ liệu website chính.</div>
     <!-- ==================== MAIN CONTENT (3 CỘT) ==================== -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -206,8 +206,28 @@
                 <!-- ==================== VIEW 1: BẢNG TIN DIỄN ĐÀN ==================== -->
                 <div id="viewFeedContainer" class="space-y-5">
                     
+                    <!-- V3: D1 live feed. V2 code remains available for rollback. -->
+                    <div id="v3LivePanel" class="space-y-4">
+                        <div class="bg-white rounded-2xl border border-blue-100 p-4 sm:p-5 space-y-3">
+                            <div class="flex justify-between items-center gap-2">
+                                <h2 class="font-display font-extrabold text-blue-900 text-base"><i class="fa-solid fa-database mr-2"></i>Bài viết V3.0 · Dữ liệu chung</h2>
+                                <button onclick="v3Refresh()" class="text-xs text-blue-700 font-bold border border-blue-200 px-3 py-2 rounded-lg">Làm mới</button>
+                            </div>
+                            <div id="v3CreatePrompt" class="text-xs text-slate-500">Đăng nhập để đăng bài và thả cảm xúc.</div>
+                            <form id="v3PostForm" onsubmit="v3CreatePost(event)" class="hidden space-y-2">
+                                <input id="v3PostTitle" required maxlength="150" placeholder="Tiêu đề bài viết" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                <select id="v3PostTopic" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                    <option value="general">Thảo luận chung</option><option value="Học tập & Ôn thi">Học tập & Ôn thi</option><option value="Giải trí & Câu lạc bộ">Giải trí & Câu lạc bộ</option><option value="Góc Tâm Sự">Góc Tâm Sự</option><option value="Thông báo & Sự kiện">Thông báo & Sự kiện</option><option value="Hỏi đáp & Tìm đồ">Hỏi đáp & Tìm đồ</option>
+                                </select>
+                                <textarea id="v3PostBody" required rows="3" placeholder="Nội dung bài viết..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"></textarea>
+                                <button class="bg-blue-600 text-white font-bold text-xs rounded-xl px-4 py-2">Đăng bài lên D1</button>
+                            </form>
+                        </div>
+                        <div id="v3FeedStatus" role="status" class="text-xs text-slate-500 px-1">Đang tải bài viết từ Cloudflare D1...</div>
+                        <div id="v3FeedList" class="space-y-4"></div>
+                    </div>
                     <!-- Khung tạo bài viết -->
-                    <div id="createPostBox" class="bg-white rounded-2xl shadow-xs border border-slate-200/90 p-4 sm:p-5">
+                    <div id="createPostBox" class="hidden bg-white rounded-2xl shadow-xs border border-slate-200/90 p-4 sm:p-5">
                         <!-- Khi chưa đăng nhập -->
                         <div id="guestPostPrompt" class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-blue-50 to-indigo-50/60 p-4 rounded-xl border border-blue-100">
                             <div class="flex items-center gap-3 text-center sm:text-left">
@@ -454,7 +474,7 @@
                     </div>
 
                     <!-- Danh sách bài viết công khai (Đã duyệt) -->
-                    <div id="postsFeedList" class="space-y-4">
+                    <div id="postsFeedList" class="hidden space-y-4">
                         <!-- Render bằng JS -->
                     </div>
                 </div>
@@ -542,33 +562,18 @@
                     </div>
                 </div>
 
-                <!-- Card Quy trình hoạt động Diễn đàn -->
+                <!-- V3: Bảng tin nhanh dùng dữ liệu D1 -->
                 <div class="bg-white rounded-2xl shadow-xs border border-slate-200/90 p-4">
-                    <h3 class="font-display font-bold text-slate-800 text-xs uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <i class="fa-solid fa-shield-cat text-blue-600"></i> Cơ chế An toàn Tiểu La
-                    </h3>
-                    <div class="space-y-2.5 text-xs text-slate-600">
-                        <div class="flex items-start gap-2.5 p-2.5 rounded-xl bg-blue-50/70 border border-blue-100">
-                            <i class="fa-solid fa-robot text-blue-600 mt-0.5"></i>
-                            <div>
-                                <p class="font-bold text-slate-800">Lọc từ khóa nhạy cảm</p>
-                                <p class="text-[11px] text-slate-500 mt-0.5">Tự động cảnh báo & gắn cờ đỏ các nội dung công kích, tiêu cực.</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-2.5 p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100">
-                            <i class="fa-solid fa-award text-emerald-600 mt-0.5"></i>
-                            <div>
-                                <p class="font-bold text-slate-800">Ghim Giải đáp chuẩn xác</p>
-                                <p class="text-[11px] text-slate-500 mt-0.5">Bình luận hay nhất trong Học tập/Hỏi đáp được ghim lên đầu.</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-2.5 p-2.5 rounded-xl bg-purple-50/70 border border-purple-100">
-                            <i class="fa-solid fa-mask text-purple-600 mt-0.5"></i>
-                            <div>
-                                <p class="font-bold text-slate-800">Góc Tâm Sự Ẩn Danh</p>
-                                <p class="text-[11px] text-slate-500 mt-0.5">Chia sẻ ẩn danh an toàn. Danh tính thực chỉ BQT nắm giữ.</p>
-                            </div>
-                        </div>
+                    <div class="flex justify-between items-center gap-2 mb-3">
+                        <h3 class="font-display font-bold text-slate-800 text-xs uppercase tracking-wider"><i class="fa-solid fa-bullhorn text-blue-600 mr-2"></i>Bảng tin nhanh Tiểu La</h3>
+                        <button onclick="v3Refresh()" title="Tải lại" class="text-blue-600"><i class="fa-solid fa-rotate"></i></button>
+                    </div>
+                    <div id="v3Announcements" class="space-y-2 text-xs text-slate-600" aria-live="polite">Đang tải bảng tin...</div>
+                    <div id="v3AdminAnnouncement" class="hidden mt-3 border-t border-slate-100 pt-3 space-y-2">
+                        <div class="font-bold text-xs text-blue-800">Admin đăng thông báo</div>
+                        <input id="v3AnnTitle" maxlength="150" placeholder="Tiêu đề thông báo" class="w-full border rounded-lg p-2 text-xs">
+                        <textarea id="v3AnnBody" rows="3" placeholder="Nội dung thông báo" class="w-full border rounded-lg p-2 text-xs"></textarea>
+                        <button onclick="v3PublishAnnouncement()" class="bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-lg">Đăng bảng tin</button>
                     </div>
                 </div>
 
@@ -3317,5 +3322,135 @@
 
         window.addEventListener('DOMContentLoaded', initApp);
     </script>
+<script>
+/* V3 TEST UI integration: isolated from legacy V2 authentication and administration. */
+(function(){
+    const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const stamp = n => { const d = new Date(Number(n) < 1e11 ? Number(n)*1000 : Number(n)); return isNaN(d) ? '' : d.toLocaleString('vi-VN'); };
+    const msg = (e) => (e && e.message) || String(e);
+    const get = id => document.getElementById(id);
+    const isLogged = () => !!(typeof state !== 'undefined' && state.currentUser && typeof authToken !== 'undefined' && authToken);
+    const isRootAdmin = () => !!(typeof state !== 'undefined' && state.currentUser && typeof isAdmin === 'function' && isAdmin());
+    let posts = [];
+    let announcements = [];
+    let v3Ready = false;
+    function syncAuth(){
+        get('v3PostForm').classList.toggle('hidden', !isLogged());
+        get('v3CreatePrompt').classList.toggle('hidden', isLogged());
+        get('v3AdminAnnouncement').classList.toggle('hidden', !isRootAdmin());
+    }
+    async function request(path, method='GET', data){
+        return apiRequest(path, method, data === undefined ? null : data);
+    }
+    function normalizePost(p){
+        return { id: p.id, title: p.title || '', body: p.body ?? p.content ?? '', topic: p.topic || 'general',
+          author: p.author_name || p.authorName || p.full_name || p.username || 'Thành viên Tiểu La',
+          created: p.created_at ?? p.timestamp, reactions: p.reactions || {}, commentCount: p.comment_count ?? p.comments_count ?? 0 };
+    }
+    function renderPosts(){
+        const list = get('v3FeedList');
+        if(!posts.length){ list.innerHTML='<div class="bg-white rounded-2xl p-5 text-sm text-slate-500">Chưa có bài viết trên D1.</div>'; return; }
+        list.innerHTML = posts.map(raw=>{
+            const p=normalizePost(raw);
+            const id=esc(p.id);
+            return `<article class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm">
+              <div class="flex justify-between gap-2 items-start"><div><p class="text-xs font-bold text-blue-700">${esc(p.author)}</p><p class="text-[11px] text-slate-400">${esc(stamp(p.created))} · ${esc(p.topic)}</p></div><span class="text-[10px] text-emerald-700 bg-emerald-50 rounded-full px-2 py-1">D1</span></div>
+              <h3 class="font-bold text-slate-900 mt-3">${esc(p.title)}</h3>
+              <p class="text-sm text-slate-700 mt-2 whitespace-pre-wrap break-words">${esc(p.body)}</p>
+              <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100">
+                ${[['like','👍'],['love','❤️'],['haha','😆'],['wow','😮'],['sad','😢']].map(([key,emoji])=>`<button type="button" data-v3-reaction="${key}" data-v3-id="${id}" class="text-xs px-2.5 py-1.5 bg-slate-50 hover:bg-blue-50 rounded-full border border-slate-200">${emoji} ${esc((p.reactions && p.reactions[key]) || '')}</button>`).join('')}
+                <button type="button" data-v3-comments="${id}" class="text-xs text-blue-700 px-2.5 py-1.5">💬 Bình luận (${esc(p.commentCount)})</button>
+              </div><div id="v3Comments_${id}" class="hidden mt-3 border-t pt-3 space-y-2"></div>
+            </article>`;
+        }).join('');
+    }
+    function renderAnnouncements(){
+        const node=get('v3Announcements');
+        if(!announcements.length){node.textContent='Chưa có thông báo nào.';return;}
+        node.innerHTML=announcements.map(a=>`<div class="p-3 rounded-xl bg-blue-50 border border-blue-100"><p class="font-bold text-blue-950">📢 ${esc(a.title || a.name || 'Thông báo')}</p><p class="mt-1 whitespace-pre-wrap break-words">${esc(a.body ?? a.content ?? a.message ?? '')}</p><p class="text-[10px] text-slate-400 mt-1">${esc(stamp(a.created_at))}</p></div>`).join('');
+    }
+    window.v3Refresh=async function(){
+        syncAuth();
+        get('v3FeedStatus').textContent='Đang tải dữ liệu từ Cloudflare D1...';
+        const outcomes=await Promise.allSettled([request('/api/v3/posts'),request('/api/v3/announcements')]);
+        if(outcomes[0].status==='fulfilled'){
+            const data=outcomes[0].value;
+            posts=Array.isArray(data) ? data : (data.posts || []);
+            renderPosts();
+            get('v3FeedStatus').textContent=`Đang hiển thị ${posts.length} bài viết từ D1 TEST.`;
+            v3Ready=true;
+        } else {
+            get('v3FeedStatus').textContent='Không tải được bài viết D1: '+msg(outcomes[0].reason);
+            get('v3FeedList').innerHTML='';
+        }
+        if(outcomes[1].status==='fulfilled'){
+            const data=outcomes[1].value;
+            announcements=Array.isArray(data)?data:(data.announcements||[]);
+            renderAnnouncements();
+        } else get('v3Announcements').textContent='Không tải được bảng tin: '+msg(outcomes[1].reason);
+    };
+    window.v3CreatePost=async function(e){
+        e.preventDefault(); if(!isLogged()){showToast('Vui lòng đăng nhập trước','warning');return;}
+        const title=get('v3PostTitle').value.trim(), body=get('v3PostBody').value.trim();
+        if(!title||!body)return;
+        try{
+            const data=await request('/api/v3/posts','POST',{title,body,topic:get('v3PostTopic').value});
+            if(data.ok===false)throw Error(data.error||'Không tạo được bài viết');
+            get('v3PostForm').reset(); showToast('Đã gửi bài viết tới D1 TEST','success'); await v3Refresh();
+        }catch(err){showToast('Đăng bài thất bại: '+msg(err),'warning');}
+    };
+    window.v3PublishAnnouncement=async function(){
+        if(!isRootAdmin()){showToast('Chỉ Admin được đăng thông báo','warning');return;}
+        const title=get('v3AnnTitle').value.trim(), body=get('v3AnnBody').value.trim();
+        if(!title||!body){showToast('Nhập tiêu đề và nội dung','warning');return;}
+        try{
+            const data=await request('/api/v3/announcements','POST',{title,body,publish:true,pinned:false});
+            if(data.ok===false)throw Error(data.error||'Không đăng được thông báo');
+            get('v3AnnTitle').value='';get('v3AnnBody').value='';showToast('Đã đăng bảng tin nhanh','success');await v3Refresh();
+        }catch(err){showToast('Đăng thông báo thất bại: '+msg(err),'warning');}
+    };
+    async function commentsFor(id, box){
+        try{
+            const data=await request('/api/v3/posts/'+encodeURIComponent(id)+'/comments');
+            const arr=Array.isArray(data)?data:(data.comments||[]);
+            box.innerHTML=arr.map(c=>`<div class="bg-slate-50 p-2 rounded-lg text-xs"><strong>${esc(c.author_name||c.authorName||'Thành viên')}</strong><p class="whitespace-pre-wrap break-words">${esc(c.body||c.content||'')}</p></div>`).join('') || '<p class="text-xs text-slate-500">Chưa có bình luận.</p>';
+            if(isLogged())box.innerHTML+=`<form data-v3-comment-form="${esc(id)}" class="flex gap-2"><input required maxlength="2000" name="body" placeholder="Viết bình luận..." class="flex-1 min-w-0 border rounded-lg p-2 text-xs"><button class="bg-blue-600 text-white px-3 rounded-lg text-xs">Gửi</button></form>`;
+        }catch(err){box.textContent='Không tải được bình luận: '+msg(err);}
+    }
+    document.addEventListener('click',async function(e){
+        const r=e.target.closest('[data-v3-reaction]');
+        if(r){
+            if(!isLogged()){showToast('Vui lòng đăng nhập để thả cảm xúc','warning');return;}
+            r.disabled=true;
+            try{await request('/api/v3/posts/'+encodeURIComponent(r.dataset.v3Id)+'/reactions','POST',{reaction:r.dataset.v3Reaction});showToast('Đã ghi nhận cảm xúc','success');await v3Refresh();}
+            catch(err){showToast('Không thể thả cảm xúc: '+msg(err),'warning');}
+            finally{r.disabled=false;}
+            return;
+        }
+        const b=e.target.closest('[data-v3-comments]');
+        if(b){const box=get('v3Comments_'+b.dataset.v3Comments);if(!box)return;const opening=box.classList.contains('hidden');box.classList.toggle('hidden');if(opening)await commentsFor(b.dataset.v3Comments,box);}
+    });
+    document.addEventListener('submit',async function(e){
+        const f=e.target.closest('[data-v3-comment-form]');if(!f)return;
+        e.preventDefault();const id=f.dataset.v3CommentForm;
+        try{await request('/api/v3/posts/'+encodeURIComponent(id)+'/comments','POST',{body:f.elements.body.value.trim()});showToast('Đã gửi bình luận','success');await commentsFor(id,f.parentElement);}
+        catch(err){showToast('Bình luận thất bại: '+msg(err),'warning');}
+    });
+    window.addEventListener('DOMContentLoaded',()=>{
+        // Legacy filters and local post composer are hidden only in the V3 feed view.
+        const oldFeed=get('postsFeedList'); if(oldFeed)oldFeed.classList.add('hidden');
+        const oldComposer=get('createPostBox'); if(oldComposer)oldComposer.classList.add('hidden');
+        const filter= get('filterBreadcrumbText')?.closest('.bg-white');if(filter)filter.classList.add('hidden');
+        v3Refresh();
+        // Session initialization is async; synchronize once it has completed.
+        const oldLogin=window.handleLogin;
+        if(typeof oldLogin==='function')window.handleLogin=async function(e){await oldLogin(e);syncAuth();await v3Refresh();};
+        const oldLogout=window.handleLogout;
+        if(typeof oldLogout==='function')window.handleLogout=async function(...args){await oldLogout(...args);syncAuth();};
+        const oldRender=window.renderAll;
+        if(typeof oldRender==='function')window.renderAll=function(...args){const out=oldRender(...args);syncAuth();return out;};
+    });
+})();
+</script>
 </body>
 </html>
