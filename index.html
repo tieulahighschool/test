@@ -843,6 +843,29 @@
         </form>
     </div>
 
+    <!-- Quản lý huy hiệu: dropdown, giữ nguyên API Worker V2 -->
+    <div id="badgeModal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-labelledby="badgeModalTitle">
+        <form onsubmit="submitBadge(event)" class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md space-y-4">
+            <div class="flex items-center justify-between gap-3">
+                <h2 id="badgeModalTitle" class="font-extrabold text-lg text-slate-900"><i class="fa-solid fa-award text-amber-600 mr-2"></i>Quản lý huy hiệu</h2>
+                <button type="button" onclick="closeModal('badgeModal')" aria-label="Đóng" class="text-slate-500 hover:text-slate-900 text-xl">&times;</button>
+            </div>
+            <p class="text-sm text-slate-600">Thành viên: <strong id="badgeUserName" class="text-slate-900"></strong></p>
+            <input id="badgeUserId" type="hidden">
+            <label for="badgeCodeSelect" class="block text-sm font-bold text-slate-700">Chọn huy hiệu</label>
+            <select id="badgeCodeSelect" required onchange="updateBadgePreview()" class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"></select>
+            <div class="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Huy hiệu đã chọn: <strong id="badgePreview"></strong><p id="badgeOwnership" class="text-xs mt-1"></p></div>
+            <label for="badgeReason" class="block text-sm font-bold text-slate-700">Lý do trao tặng (không bắt buộc)</label>
+            <textarea id="badgeReason" rows="2" maxlength="500" placeholder="Nhập lý do nếu cần" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+            <p class="text-xs text-slate-500">Trao huy hiệu để ghi nhận đóng góp. Thu hồi chỉ áp dụng với huy hiệu thành viên đã nhận.</p>
+            <div class="flex flex-wrap justify-end gap-2 pt-2">
+                <button type="button" onclick="closeModal('badgeModal')" class="px-4 py-2 rounded-xl bg-slate-100 font-semibold text-slate-700">Hủy</button>
+                <button id="badgeRevokeButton" type="button" onclick="submitBadgeAction('revoke')" class="px-4 py-2 rounded-xl bg-rose-100 text-rose-700 font-bold disabled:opacity-40">Thu hồi huy hiệu</button>
+                <button id="badgeAwardButton" type="submit" class="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold disabled:opacity-40">Trao huy hiệu</button>
+            </div>
+        </form>
+    </div>
+
     <div id="banUserModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden fade-in">
             <div class="bg-slate-900 px-5 py-4 text-white flex items-center justify-between">
@@ -2993,20 +3016,61 @@
                 button.disabled = false;
             }
         }
-        async function manageBadge(userId) {
-            if(!isAdmin())return;
-            const u=state.users.find(x=>x.id===userId);if(!u)return;
-            const choices=Object.entries(HONOR_BADGES).map(([k,v])=>`${k} = ${v}`).join('\n');
-            const badgeCode=prompt(`Huy hiệu cho ${u.fullName}\nNhập mã huy hiệu:\n${choices}`);
-            if(badgeCode===null)return;
-            if(!Object.hasOwn(HONOR_BADGES,badgeCode)){alert('Mã huy hiệu không hợp lệ.');return;}
-            const action=confirm('OK = TRAO huy hiệu; Cancel = chọn THU HỒI?')?'award':'revoke';
-            if(action==='revoke'&&!confirm('Xác nhận THU HỒI huy hiệu?'))return;
-            const reason=action==='award'?(prompt('Lý do trao tặng (có thể để trống):','')??null):'';
-            if(reason===null)return;
-            try {const r=await apiRequest('/api/admin/users/'+encodeURIComponent(userId)+'/badge','POST',{badgeCode,action,reason});
-                showToast(r.message||'Đã cập nhật huy hiệu.','success');await refreshAdminUsers();}
-            catch(e){showToast(e.message,'error');}
+        function manageBadge(userId) {
+            if (!isAdmin()) return;
+            const u = state.users.find(x => x.id === userId);
+            if (!u) return;
+            const select = document.getElementById('badgeCodeSelect');
+            document.getElementById('badgeUserId').value = userId;
+            document.getElementById('badgeUserName').textContent = u.fullName || u.username || 'Thành viên';
+            document.getElementById('badgeReason').value = '';
+            select.replaceChildren();
+            Object.entries(HONOR_BADGES).forEach(([code, label]) => {
+                const option = document.createElement('option');
+                option.value = code;
+                option.textContent = label;
+                select.appendChild(option);
+            });
+            updateBadgePreview();
+            openModal('badgeModal');
+            select.focus();
+        }
+        function updateBadgePreview() {
+            const userId = document.getElementById('badgeUserId').value;
+            const badgeCode = document.getElementById('badgeCodeSelect').value;
+            const owned = (honorBadges[userId] || []).some(b => (b.badge_code || b.code) === badgeCode);
+            document.getElementById('badgePreview').textContent = HONOR_BADGES[badgeCode] || '';
+            document.getElementById('badgeOwnership').textContent = owned ? 'Thành viên đã sở hữu huy hiệu này.' : 'Thành viên chưa có huy hiệu này.';
+            document.getElementById('badgeAwardButton').disabled = owned;
+            document.getElementById('badgeRevokeButton').disabled = !owned;
+        }
+        async function submitBadge(event) {
+            event.preventDefault();
+            await submitBadgeAction('award');
+        }
+        async function submitBadgeAction(action) {
+            if (!isAdmin() || !['award', 'revoke'].includes(action)) return;
+            const userId = document.getElementById('badgeUserId').value;
+            const badgeCode = document.getElementById('badgeCodeSelect').value;
+            if (!Object.hasOwn(HONOR_BADGES, badgeCode)) { showToast('Huy hiệu không hợp lệ.', 'error'); return; }
+            const owned = (honorBadges[userId] || []).some(b => (b.badge_code || b.code) === badgeCode);
+            if (action === 'award' && owned) return;
+            if (action === 'revoke' && !owned) return;
+            if (action === 'revoke' && !confirm('Xác nhận thu hồi huy hiệu ' + HONOR_BADGES[badgeCode] + '?')) return;
+            const awardButton = document.getElementById('badgeAwardButton');
+            const revokeButton = document.getElementById('badgeRevokeButton');
+            awardButton.disabled = true;
+            revokeButton.disabled = true;
+            try {
+                const reason = action === 'award' ? document.getElementById('badgeReason').value.trim() : '';
+                const r = await apiRequest('/api/admin/users/' + encodeURIComponent(userId) + '/badge', 'POST', {badgeCode, action, reason});
+                closeModal('badgeModal');
+                showToast(r.message || 'Đã cập nhật huy hiệu.', 'success');
+                await refreshAdminUsers();
+            } catch (e) {
+                showToast(e.message || 'Không thể cập nhật huy hiệu.', 'error');
+                updateBadgePreview();
+            }
         }
 
         // Hành động của Admin & Kiểm duyệt viên
@@ -3241,6 +3305,7 @@
             if (e.target.id === 'rejectPostModal') closeModal('rejectPostModal');
             if (e.target.id === 'banUserModal') closeModal('banUserModal');
             if (e.target.id === 'appointmentModal') closeModal('appointmentModal');
+            if (e.target.id === 'badgeModal') closeModal('badgeModal');
             if (e.target.id === 'reportModal') closeModal('reportModal');
 
             const notifWrapper = document.getElementById('notificationWrapper');
