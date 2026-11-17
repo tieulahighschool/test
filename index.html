@@ -887,10 +887,18 @@
             if (!response.ok) throw new Error(data.error || `Lỗi HTTP ${response.status}`);
             return data;
         }
+        let honorRoles = {};
+        let honorBadges = {};
         async function refreshAdminUsers() {
             if (!isAdmin()) return;
             const data = await apiRequest('/api/admin/users');
             state.users = data.users || [];
+            try {
+                const honors = await apiRequest('/api/admin/honors');
+                honorRoles = Object.fromEntries((honors.roles || []).map(x => [x.user_id,x.assigned_role]));
+                honorBadges = {};
+                (honors.badges || []).forEach(x => (honorBadges[x.user_id] ||= []).push(x));
+            } catch (err) { console.warn('Không tải được chức vụ/huy hiệu:',err.message); }
             renderAll();
         }
 
@@ -1708,7 +1716,7 @@
         function setCurrentUser(user) {
             // Không được dùng hàm này để tự cấp quyền đăng nhập.
             if (user) return;
-            state.currentUser = null; state.users = []; state.currentView = 'feed';
+            state.currentUser = null; state.users = []; state.currentView = 'feed'; honorRoles = {}; honorBadges = {};
             authToken = ''; sessionStorage.removeItem(TOKEN_KEY); renderAll();
         }
 
@@ -2893,9 +2901,14 @@
                                                 </div>
                                                 <p class="text-xs text-slate-500">@${escapeHTML(u.username)} • ${escapeHTML(u.grade)}</p>
                                                 ${isBanned && u.banReason ? `<p class="text-[11px] text-red-700 mt-1"><strong>Lý do khóa:</strong> ${escapeHTML(u.banReason)}</p>` : ''}
+                                                <p class="text-[11px] mt-1 text-indigo-700">${honorRoleLabel(honorRoles[u.id])}${(honorBadges[u.id]||[]).map(b => ' · '+escapeHTML(b.emoji+' '+b.label)).join('')}</p>
                                             </div>
                                         </div>
 
+                                        <div class="flex flex-wrap gap-2">
+                                            <button onclick="manageAppointment('${u.id}')" class="px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold">Bổ nhiệm</button>
+                                            <button onclick="manageBadge('${u.id}')" class="px-3 py-2 rounded-xl bg-amber-50 text-amber-800 text-xs font-bold">Trao / thu hồi huy hiệu</button>
+                                        </div>
                                         ${isBanned ? `
                                             <button onclick="unlockUser('${u.id}')"
                                                 class="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition shrink-0 self-start sm:self-center">
@@ -2914,6 +2927,37 @@
                     </div>
                 `;
             }
+        }
+
+        const HONOR_ROLES = {none:'Thành viên thường',deputy_admin:'Phó Quản trị',moderator:'Kiểm duyệt viên',academic_manager:'Ban Học tập',class_leader:'Ban Cán sự lớp'};
+        const HONOR_BADGES = {excellent:'🏆 Thành viên xuất sắc',student:'🎓 Học sinh tiêu biểu',contributor:'⭐ Đóng góp tích cực',honorary:'💎 Thành viên danh dự',kindness:'❤️ Trái tim nhân ái',academic:'📚 Chuyên gia học tập',service:'🎖️ Cống hiến lâu năm'};
+        function honorRoleLabel(role) { return role ? '🎗️ '+(HONOR_ROLES[role]||'') : ''; }
+        async function manageAppointment(userId) {
+            if (!isAdmin()) return;
+            const u=state.users.find(x=>x.id===userId); if(!u)return;
+            const choices=Object.entries(HONOR_ROLES).map(([k,v])=>`${k} = ${v}`).join('\n');
+            const role=prompt(`Bổ nhiệm cho ${u.fullName}\nNhập mã chức vụ:\n${choices}`,honorRoles[userId]||'none');
+            if(role===null)return;
+            if(!Object.hasOwn(HONOR_ROLES,role)){alert('Mã chức vụ không hợp lệ.');return;}
+            if(!confirm(`Xác nhận chức vụ: ${HONOR_ROLES[role]}?`))return;
+            try {const r=await apiRequest('/api/admin/users/'+encodeURIComponent(userId)+'/appointment','POST',{role});
+                showToast(r.message||'Đã cập nhật chức vụ.','success');await refreshAdminUsers();}
+            catch(e){showToast(e.message,'error');}
+        }
+        async function manageBadge(userId) {
+            if(!isAdmin())return;
+            const u=state.users.find(x=>x.id===userId);if(!u)return;
+            const choices=Object.entries(HONOR_BADGES).map(([k,v])=>`${k} = ${v}`).join('\n');
+            const badgeCode=prompt(`Huy hiệu cho ${u.fullName}\nNhập mã huy hiệu:\n${choices}`);
+            if(badgeCode===null)return;
+            if(!Object.hasOwn(HONOR_BADGES,badgeCode)){alert('Mã huy hiệu không hợp lệ.');return;}
+            const action=confirm('OK = TRAO huy hiệu; Cancel = chọn THU HỒI?')?'award':'revoke';
+            if(action==='revoke'&&!confirm('Xác nhận THU HỒI huy hiệu?'))return;
+            const reason=action==='award'?(prompt('Lý do trao tặng (có thể để trống):','')??null):'';
+            if(reason===null)return;
+            try {const r=await apiRequest('/api/admin/users/'+encodeURIComponent(userId)+'/badge','POST',{badgeCode,action,reason});
+                showToast(r.message||'Đã cập nhật huy hiệu.','success');await refreshAdminUsers();}
+            catch(e){showToast(e.message,'error');}
         }
 
         // Hành động của Admin & Kiểm duyệt viên
