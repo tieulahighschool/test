@@ -224,7 +224,7 @@
                             </form>
                         </div>
                         <div id="v3FeedStatus" role="status" class="text-xs text-slate-500 px-1">Đang tải bài viết từ Cloudflare D1...</div>
-                        <div class="flex justify-end mb-3"><button type="button" onclick="v3OpenProfile()" class="text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">👤 Trang cá nhân của tôi</button></div>
+
                         <div id="v3ProfilePanel" class="hidden bg-white border border-blue-100 rounded-2xl p-4 sm:p-5 mb-4 shadow-sm"></div>
                         <div id="v3FeedList" class="space-y-4"></div>
                     </div>
@@ -1820,7 +1820,7 @@
                     </button>
                 ` : ''}
 
-                <div class="flex items-center gap-2 bg-slate-100 pl-1.5 pr-3 py-1 rounded-full border border-slate-200">
+                <button type="button" onclick="v3OpenProfile()" title="Mở trang cá nhân" class="flex items-center gap-2 bg-slate-100 pl-1.5 pr-3 py-1 rounded-full border border-slate-200 hover:bg-blue-50 transition cursor-pointer">
                     <img src="${state.currentUser.avatar}" class="w-8 h-8 rounded-full object-cover border border-white">
                     <div class="hidden md:block text-left">
                         <div class="flex items-center gap-1">
@@ -1829,7 +1829,7 @@
                         </div>
                         <p class="text-[10px] text-slate-500 mt-0.5">${escapeHTML(state.currentUser.className)} • <strong class="text-blue-700">${state.currentUser.points || 0} điểm</strong></p>
                     </div>
-                </div>
+                </button>
 
                 <button onclick="handleLogout()" title="Đăng xuất" class="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition">
                     <i class="fa-solid fa-right-from-bracket"></i>
@@ -3364,7 +3364,7 @@
                 <p class="text-xs ${locked?'text-amber-700':'text-blue-700'}">${locked?'🔒 Bạn được đổi tên tiếp từ '+esc(new Date(p.nextNameChangeAt).toLocaleDateString('vi-VN')):'⚠️ Sau khi đổi tên, bạn phải chờ 60 ngày mới được đổi tiếp.'}</p>
                 <label class="grid gap-1">Khối <input name="grade" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.grade||'')}"></label>
                 <label class="grid gap-1">Lớp <input name="className" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.className||'')}"></label>
-                <label class="grid gap-1">Link ảnh đại diện HTTPS <input name="avatar" type="url" placeholder="https://..." maxlength="500" class="border rounded-lg p-2" value="${esc(p.avatar||'')}"></label>
+                <div class="grid gap-2 rounded-xl border border-blue-100 bg-blue-50/50 p-3"><label for="v3AvatarFile" class="font-semibold text-blue-900">Ảnh đại diện</label><input id="v3AvatarFile" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*" class="text-xs w-full"/><p class="text-xs text-slate-500">Chọn ảnh từ iPhone, Android hoặc máy tính (ảnh gốc tối đa 20 MB). Ảnh sẽ được cắt vuông và nén trước khi tải lên.</p><img id="v3AvatarPreview" class="hidden w-24 h-24 object-cover rounded-full border-2 border-white shadow" alt="Xem trước avatar"><button type="button" id="v3AvatarUploadBtn" class="rounded-lg bg-blue-600 text-white font-semibold px-3 py-2 disabled:opacity-50" disabled>Tải ảnh đại diện lên</button><p id="v3AvatarStatus" class="text-xs text-slate-600" role="status"></p></div>
                 <label class="grid gap-1">Giới thiệu <textarea name="bio" maxlength="500" class="border rounded-lg p-2" rows="2">${esc(p.bio||'')}</textarea></label>
                 <label class="grid gap-1">Khóa học <input name="schoolYear" maxlength="60" class="border rounded-lg p-2" value="${esc(p.schoolYear||'')}"></label>
                 <p class="text-xs text-slate-500">Email đăng nhập: ${esc(p.email||'')} (không công khai)</p>
@@ -3373,6 +3373,47 @@
             panel.scrollIntoView({behavior:'smooth',block:'start'});
         }catch(e){panel.textContent='Không tải được hồ sơ: '+msg(e);}
     };
+    let v3AvatarBlob=null;
+    document.addEventListener('change',async e=>{
+        if(e.target?.id!=='v3AvatarFile')return;
+        const file=e.target.files?.[0],status=get('v3AvatarStatus'),preview=get('v3AvatarPreview'),button=get('v3AvatarUploadBtn');
+        v3AvatarBlob=null;button.disabled=true;preview.classList.add('hidden');
+        if(!file)return;
+        if(file.size>20*1024*1024){status.textContent='Ảnh gốc vượt quá 20 MB.';return;}
+        status.textContent='Đang xử lý và tối ưu ảnh...';
+        let objectUrl;
+        try{
+            objectUrl=URL.createObjectURL(file);
+            const img=new Image();
+            await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Trình duyệt không đọc được ảnh này. Nếu là HEIC, hãy chuyển sang JPEG rồi thử lại.'));img.src=objectUrl;});
+            const side=Math.min(img.naturalWidth,img.naturalHeight);
+            if(!side)throw new Error('Kích thước ảnh không hợp lệ.');
+            const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;
+            const ctx=canvas.getContext('2d');
+            ctx.drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,512,512);
+            const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.85));
+            if(!blob)throw new Error('Không nén được ảnh.');
+            v3AvatarBlob=blob;
+            preview.src=URL.createObjectURL(blob);preview.classList.remove('hidden');button.disabled=false;
+            status.textContent='Đã sẵn sàng ('+Math.ceil(blob.size/1024)+' KB). Nhấn “Tải ảnh đại diện lên”.';
+        }catch(err){status.textContent=err.message||'Không thể đọc ảnh.';}
+        finally{if(objectUrl)URL.revokeObjectURL(objectUrl);}
+    });
+    document.addEventListener('click',async e=>{
+        if(e.target?.id!=='v3AvatarUploadBtn')return;
+        if(!v3AvatarBlob||!isLogged())return;
+        const btn=e.target,status=get('v3AvatarStatus');btn.disabled=true;status.textContent='Đang tải ảnh lên Cloudinary...';
+        try{
+            const fd=new FormData();fd.append('file',v3AvatarBlob,'avatar.jpg');
+            const res=await fetch(AUTH_API+'/api/v3/profile/avatar',{method:'POST',headers:{Authorization:'Bearer '+authToken},body:fd});
+            const data=await res.json().catch(()=>({}));
+            if(!res.ok)throw new Error(data.error||'Lỗi HTTP '+res.status);
+            state.currentUser=data.user;
+            if(typeof renderAll==='function')renderAll();
+            showToast('Đã cập nhật ảnh đại diện','success');
+            await v3OpenProfile(data.user.id);await v3Refresh();
+        }catch(err){status.textContent='Tải ảnh thất bại: '+msg(err);btn.disabled=false;}
+    });
     document.addEventListener('submit',async e=>{
         if(e.target?.id!=='v3ProfileEdit')return;
         e.preventDefault();const f=e.target;
@@ -3384,7 +3425,7 @@
             const data=await request('/api/v3/profile/me','PATCH',{
                 ...(changed?{fullName,confirmNameCooldown:true}:{}),
                 grade:f.elements.grade.value.trim(),className:f.elements.className.value.trim(),
-                avatar:f.elements.avatar.value.trim(),bio:f.elements.bio.value.trim(),schoolYear:f.elements.schoolYear.value.trim()});
+                bio:f.elements.bio.value.trim(),schoolYear:f.elements.schoolYear.value.trim()});
             state.currentUser=data.user;
             showToast('Đã cập nhật thông tin cá nhân','success');
             if(typeof renderAll==='function')renderAll();
