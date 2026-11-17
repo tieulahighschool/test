@@ -224,6 +224,8 @@
                             </form>
                         </div>
                         <div id="v3FeedStatus" role="status" class="text-xs text-slate-500 px-1">Đang tải bài viết từ Cloudflare D1...</div>
+                        <div class="flex justify-end mb-3"><button type="button" onclick="v3OpenProfile()" class="text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">👤 Trang cá nhân của tôi</button></div>
+                        <div id="v3ProfilePanel" class="hidden bg-white border border-blue-100 rounded-2xl p-4 sm:p-5 mb-4 shadow-sm"></div>
                         <div id="v3FeedList" class="space-y-4"></div>
                     </div>
                     <!-- Khung tạo bài viết -->
@@ -3334,6 +3336,66 @@
     let posts = [];
     let announcements = [];
     let v3Ready = false;
+    // Per-account local state for Like; D1 remains the source of truth for totals.
+    const likeKey = id => 'tieula_v3_like_' + String(state?.currentUser?.id || 'guest') + '_' + id;
+    const liked = id => { try { return localStorage.getItem(likeKey(id)) === '1'; } catch (_) { return false; } };
+    const setLiked = (id, value) => { try { if(value) localStorage.setItem(likeKey(id), '1'); else localStorage.removeItem(likeKey(id)); } catch (_) {} };
+
+    let profileOpenId = null;
+    const profilePanel = () => get('v3ProfilePanel');
+    const safeAvatar = v => /^https:\/\/[^\s<>"']+$/i.test(String(v||'')) ? String(v) : '';
+    window.v3OpenProfile = async function(id){
+        const userId=String(id || state?.currentUser?.id || '');
+        if(!userId){showToast('Vui lòng đăng nhập để xem hồ sơ của bạn','warning');return;}
+        profileOpenId=userId;
+        const panel=profilePanel();panel.classList.remove('hidden');
+        panel.textContent='Đang tải hồ sơ thành viên...';
+        try{
+            const own=isLogged() && state.currentUser.id===userId;
+            const res=await request(own?'/api/v3/profile/me':'/api/v3/profiles/'+encodeURIComponent(userId));
+            const p=res.profile;
+            const locked=!!(p.nextNameChangeAt && Date.now()<p.nextNameChangeAt);
+            const avatar=safeAvatar(p.avatar);
+            panel.innerHTML=`<div class="flex justify-between gap-2 items-center mb-4"><h3 class="font-bold text-blue-900 text-lg">${own?'Thông tin tài khoản':'Trang cá nhân thành viên'}</h3><button type="button" data-v3-profile-close class="text-slate-500 border rounded-lg px-3 py-1">Đóng ×</button></div>
+              <div class="flex gap-3 items-center mb-4">${avatar?`<img class="w-16 h-16 rounded-full object-cover" src="${esc(avatar)}" alt="Avatar" referrerpolicy="no-referrer">`:'<div class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-800 text-2xl">👤</div>'}
+                <div><h4 class="font-bold text-slate-900">${esc(p.fullName)}</h4><p class="text-xs text-slate-500">${esc(p.grade||'')} · ${esc(p.className||'')}</p><p class="text-xs text-slate-500">${Number(p.postCount||0)} bài viết · ${Number(p.commentCount||0)} bình luận</p></div></div>
+              ${own?`<form id="v3ProfileEdit" class="grid gap-3 text-sm">
+                <label class="grid gap-1">Tên hiển thị <input name="fullName" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.fullName)}" ${locked?'disabled':''}></label>
+                <p class="text-xs ${locked?'text-amber-700':'text-blue-700'}">${locked?'🔒 Bạn được đổi tên tiếp từ '+esc(new Date(p.nextNameChangeAt).toLocaleDateString('vi-VN')):'⚠️ Sau khi đổi tên, bạn phải chờ 60 ngày mới được đổi tiếp.'}</p>
+                <label class="grid gap-1">Khối <input name="grade" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.grade||'')}"></label>
+                <label class="grid gap-1">Lớp <input name="className" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.className||'')}"></label>
+                <label class="grid gap-1">Link ảnh đại diện HTTPS <input name="avatar" type="url" placeholder="https://..." maxlength="500" class="border rounded-lg p-2" value="${esc(p.avatar||'')}"></label>
+                <label class="grid gap-1">Giới thiệu <textarea name="bio" maxlength="500" class="border rounded-lg p-2" rows="2">${esc(p.bio||'')}</textarea></label>
+                <label class="grid gap-1">Khóa học <input name="schoolYear" maxlength="60" class="border rounded-lg p-2" value="${esc(p.schoolYear||'')}"></label>
+                <p class="text-xs text-slate-500">Email đăng nhập: ${esc(p.email||'')} (không công khai)</p>
+                <button type="submit" class="bg-blue-700 text-white font-semibold rounded-lg p-2">Lưu thông tin</button></form>`:
+                `<p class="text-sm text-slate-600 whitespace-pre-wrap">${esc(p.bio||'Chưa có giới thiệu.')}</p><p class="text-xs text-slate-500 mt-2">Khóa học: ${esc(p.schoolYear||'Chưa cập nhật')}</p>`}`;
+            panel.scrollIntoView({behavior:'smooth',block:'start'});
+        }catch(e){panel.textContent='Không tải được hồ sơ: '+msg(e);}
+    };
+    document.addEventListener('submit',async e=>{
+        if(e.target?.id!=='v3ProfileEdit')return;
+        e.preventDefault();const f=e.target;
+        const fullName=f.elements.fullName?.value.trim()||state.currentUser.fullName;
+        const changed=fullName!==state.currentUser.fullName;
+        if(changed && !confirm('CẢNH BÁO: Sau khi đổi tên thành "'+fullName+'", bạn sẽ KHÔNG được đổi tên tiếp trong 60 ngày. Bạn xác nhận?'))return;
+        const btn=f.querySelector('[type=submit]');btn.disabled=true;
+        try{
+            const data=await request('/api/v3/profile/me','PATCH',{
+                ...(changed?{fullName,confirmNameCooldown:true}:{}),
+                grade:f.elements.grade.value.trim(),className:f.elements.className.value.trim(),
+                avatar:f.elements.avatar.value.trim(),bio:f.elements.bio.value.trim(),schoolYear:f.elements.schoolYear.value.trim()});
+            state.currentUser=data.user;
+            showToast('Đã cập nhật thông tin cá nhân','success');
+            if(typeof renderAll==='function')renderAll();
+            await v3OpenProfile(data.user.id);await v3Refresh();
+        }catch(err){showToast('Không lưu được hồ sơ: '+msg(err),'warning');}
+        finally{btn.disabled=false;}
+    });
+    document.addEventListener('click',e=>{
+        if(e.target.closest('[data-v3-profile-close]')){profilePanel().classList.add('hidden');profileOpenId=null;}
+        const a=e.target.closest('[data-v3-profile-id]');if(a)v3OpenProfile(a.dataset.v3ProfileId);
+    });
     function syncAuth(){
         get('v3PostForm').classList.toggle('hidden', !isLogged());
         get('v3CreatePrompt').classList.toggle('hidden', isLogged());
@@ -3354,11 +3416,11 @@
             const p=normalizePost(raw);
             const id=esc(p.id);
             return `<article class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm">
-              <div class="flex justify-between gap-2 items-start"><div><p class="text-xs font-bold text-blue-700">${esc(p.author)}</p><p class="text-[11px] text-slate-400">${esc(stamp(p.created))} · ${esc(p.topic)}</p></div><span class="text-[10px] text-emerald-700 bg-emerald-50 rounded-full px-2 py-1">D1</span></div>
+              <div class="flex justify-between gap-2 items-start"><div><button type="button" data-v3-profile-id="${esc(raw.author_user_id||'')}" class="text-xs font-bold text-blue-700 hover:underline">${esc(p.author)}</button><p class="text-[11px] text-slate-400">${esc(stamp(p.created))} · ${esc(p.topic)}</p></div><span class="text-[10px] text-emerald-700 bg-emerald-50 rounded-full px-2 py-1">D1</span></div>
               <h3 class="font-bold text-slate-900 mt-3">${esc(p.title)}</h3>
               <p class="text-sm text-slate-700 mt-2 whitespace-pre-wrap break-words">${esc(p.body)}</p>
               <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100">
-                ${[['like','👍'],['love','❤️'],['haha','😆'],['wow','😮'],['sad','😢']].map(([key,emoji])=>`<button type="button" data-v3-reaction="${key}" data-v3-id="${id}" class="text-xs px-2.5 py-1.5 bg-slate-50 hover:bg-blue-50 rounded-full border border-slate-200">${emoji} ${esc((p.reactions && p.reactions[key]) || '')}</button>`).join('')}
+                <button type="button" data-v3-reaction="like" data-v3-id="${id}" aria-pressed="${liked(p.id)}" class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition ${liked(p.id) ? 'bg-blue-100 text-blue-700 border-blue-300' : 'text-slate-600 bg-slate-50 hover:bg-blue-50 hover:text-blue-700 border-slate-200'}"><i class="${liked(p.id) ? 'fa-solid' : 'fa-regular'} fa-thumbs-up"></i> ${liked(p.id) ? 'Đã thích' : 'Thích'}${Number(raw.reaction_count ?? 0) > 0 ? ` (${Number(raw.reaction_count)})` : ''}</button>
                 <button type="button" data-v3-comments="${id}" class="text-xs text-blue-700 px-2.5 py-1.5">💬 Bình luận (${esc(p.commentCount)})</button>
               </div><div id="v3Comments_${id}" class="hidden mt-3 border-t pt-3 space-y-2"></div>
             </article>`;
@@ -3422,7 +3484,16 @@
         if(r){
             if(!isLogged()){showToast('Vui lòng đăng nhập để thả cảm xúc','warning');return;}
             r.disabled=true;
-            try{await request('/api/v3/posts/'+encodeURIComponent(r.dataset.v3Id)+'/reaction','PUT',{reaction:r.dataset.v3Reaction});showToast('Đã ghi nhận cảm xúc','success');await v3Refresh();}
+            try{
+                const id=r.dataset.v3Id, alreadyLiked=liked(id);
+                const result=alreadyLiked
+                    ? await request('/api/v3/posts/'+encodeURIComponent(id)+'/reaction','DELETE')
+                    : await request('/api/v3/posts/'+encodeURIComponent(id)+'/reaction','PUT',{reaction:'like'});
+                if(result && result.ok===false)throw Error(result.error||'Không cập nhật được lượt thích');
+                setLiked(id,!alreadyLiked);
+                showToast(alreadyLiked?'Đã bỏ thích':'Đã thích bài viết','success');
+                await v3Refresh();
+            }
             catch(err){showToast('Không thể thả cảm xúc: '+msg(err),'warning');}
             finally{r.disabled=false;}
             return;
@@ -3446,7 +3517,7 @@
         const oldLogin=window.handleLogin;
         if(typeof oldLogin==='function')window.handleLogin=async function(e){await oldLogin(e);syncAuth();await v3Refresh();};
         const oldLogout=window.handleLogout;
-        if(typeof oldLogout==='function')window.handleLogout=async function(...args){await oldLogout(...args);syncAuth();};
+        if(typeof oldLogout==='function')window.handleLogout=async function(...args){await oldLogout(...args);profilePanel().classList.add('hidden');profileOpenId=null;syncAuth();};
         const oldRender=window.renderAll;
         if(typeof oldRender==='function')window.renderAll=function(...args){const out=oldRender(...args);syncAuth();return out;};
     });
