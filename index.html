@@ -225,7 +225,7 @@
                         </div>
                         <div id="v3FeedStatus" role="status" class="text-xs text-slate-500 px-1">Đang tải bài viết từ Cloudflare D1...</div>
 
-                        <div id="v34ReviewPanel" class="hidden bg-white border border-amber-200 rounded-2xl p-4 sm:p-5 mb-4 shadow-sm"></div>
+                        
                         <div id="v3ProfilePanel" class="hidden bg-white border border-blue-100 rounded-2xl p-4 sm:p-5 mb-4 shadow-sm"></div>
                         <div id="v3FeedList" class="space-y-4"></div>
                     </div>
@@ -498,6 +498,14 @@
 
                 <!-- ==================== VIEW 3: TRUNG TÂM KIỂM DUYỆT (ADMIN & MOD) ==================== -->
                 <div id="viewModContainer" class="hidden space-y-5 fade-in">
+                    <section class="bg-white border border-amber-200 rounded-2xl p-4 shadow-sm">
+                      <div class="flex flex-wrap justify-between items-center gap-2">
+                        <h3 class="font-bold text-amber-900"><i class="fa-solid fa-id-card mr-2"></i>Yêu cầu chỉnh sửa hồ sơ <span id="v34PendingBadge" class="hidden bg-red-600 text-white text-xs rounded-full px-2 py-0.5"></span></h3>
+                        <button type="button" onclick="v34OpenReview()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg px-3 py-2 text-xs">Xem yêu cầu chờ duyệt</button>
+                      </div>
+                      <p class="text-xs text-slate-500 mt-1">Duyệt thay đổi tên, khối, lớp. Chỉ Admin chính được phê duyệt chuyển sang Giáo viên.</p>
+                      <div id="v34ReviewPanel" class="hidden mt-3 border-t border-amber-100 pt-3"></div>
+                    </section>
                     <div class="bg-gradient-to-r from-slate-900 to-blue-950 text-white rounded-2xl shadow-md p-5">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
@@ -2025,6 +2033,7 @@
             document.getElementById('viewMyPostsContainer').classList.toggle('hidden', viewName !== 'my_posts');
             document.getElementById('viewModContainer').classList.toggle('hidden', viewName !== 'moderation');
             renderAll();
+            if(viewName === 'moderation' && isStaff() && typeof v34OpenReview === 'function') v34OpenReview();
         }
 
         function renderBreadcrumb() {
@@ -3360,7 +3369,7 @@
             panel.innerHTML=`<div class="flex justify-between gap-2 items-center mb-4"><h3 class="font-bold text-blue-900 text-lg">${own?'Thông tin tài khoản':'Trang cá nhân thành viên'}</h3><button type="button" data-v3-profile-close class="text-slate-500 border rounded-lg px-3 py-1">Đóng ×</button></div>
               <div class="flex gap-3 items-center mb-4">${avatar?`<img class="w-16 h-16 rounded-full object-cover" src="${esc(avatar)}" alt="Avatar" referrerpolicy="no-referrer">`:'<div class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-800 text-2xl">👤</div>'}
                 <div><h4 class="font-bold text-slate-900">${esc(p.fullName)}</h4><p class="text-xs text-slate-500">${esc(p.grade||'')} · ${esc(p.className||'')}</p><p class="text-xs text-slate-500">${Number(p.postCount||0)} bài viết · ${Number(p.commentCount||0)} bình luận</p></div></div>
-              ${own?`<button type="button" onclick="v34OpenReview()" class="mb-3 text-xs text-blue-700 underline">Trung tâm kiểm duyệt yêu cầu hồ sơ (dành cho người có quyền)</button><form id="v3ProfileEdit" class="grid gap-3 text-sm">
+              ${own?`${isStaff()?`<button type="button" onclick="switchView('moderation')" class="mb-3 text-xs text-blue-700 underline">Trung tâm kiểm duyệt yêu cầu hồ sơ</button>`:''}<form id="v3ProfileEdit" class="grid gap-3 text-sm">
                 <label class="grid gap-1">Tên hiển thị <input name="fullName" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.fullName)}" ${locked?'disabled':''}></label>
                 <p class="text-xs ${locked?'text-amber-700':'text-blue-700'}">${locked?'🔒 Bạn được đổi tên tiếp từ '+esc(new Date(p.nextNameChangeAt).toLocaleDateString('vi-VN')):'⚠️ Sau khi đổi tên, bạn phải chờ 60 ngày mới được đổi tiếp.'}</p>
                 <label class="grid gap-1">Khối / vai trò <select name="grade" required class="border rounded-lg p-2" data-v3-grade-select>
@@ -3385,6 +3394,7 @@
     window.v34OpenReview=async function(){
       const panel=get('v34ReviewPanel');if(!panel)return;panel.classList.remove('hidden');panel.textContent='Đang tải yêu cầu...';
       try{const data=await request('/api/v3/admin/profile-change-requests');
+        const badge=get('v34PendingBadge');if(badge){const count=(data.requests||[]).length;badge.textContent=count;badge.classList.toggle('hidden',!count);}
         panel.innerHTML='<div class="flex justify-between items-center mb-3"><h3 class="font-bold text-lg">Kiểm duyệt thay đổi hồ sơ</h3><button data-v34-close class="border rounded px-3 py-1">Đóng ×</button></div>'+
         ((data.requests||[]).length?(data.requests||[]).map(r=>'<div class="border rounded-xl p-3 mb-2 text-sm"><p class="font-semibold">'+esc(r.old_name)+' → '+esc(r.new_name)+'</p><p>'+esc(r.old_grade)+' / '+esc(r.old_class_name)+' → <strong>'+esc(r.new_grade)+' / '+esc(r.new_class_name)+'</strong></p>'+
         (r.new_grade==='Giáo viên'&&!data.rootAdmin?'<p class="text-amber-700">Chỉ Admin chính được duyệt yêu cầu Giáo viên.</p>':'')+
