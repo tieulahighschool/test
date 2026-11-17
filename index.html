@@ -220,12 +220,18 @@
                                     <option value="general">Thảo luận chung</option><option value="Học tập & Ôn thi">Học tập & Ôn thi</option><option value="Giải trí & Câu lạc bộ">Giải trí & Câu lạc bộ</option><option value="Góc Tâm Sự">Góc Tâm Sự</option><option value="Thông báo & Sự kiện">Thông báo & Sự kiện</option><option value="Hỏi đáp & Tìm đồ">Hỏi đáp & Tìm đồ</option>
                                 </select>
                                 <textarea id="v3PostBody" required rows="3" placeholder="Nội dung bài viết..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"></textarea>
+                                <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+                                    <label for="v344PostImage" class="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-white border border-blue-300 px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100"><i class="fa-regular fa-image"></i> 📷 Tải hình ảnh lên bài viết</label>
+                                    <input id="v344PostImage" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" onchange="v345PreviewPostImage(this)">
+                                    <p id="v345ImageHint" class="text-xs text-slate-600">Chọn ảnh JPG, PNG hoặc WebP, tối đa 5 MB.</p>
+                                    <div id="v345PostPreview" class="hidden"><img id="v345PostPreviewImg" class="max-h-56 max-w-full rounded-lg object-contain" alt="Ảnh xem trước"><button type="button" onclick="v345RemovePostImage()" class="block mt-2 text-xs font-bold text-red-600">✕ Bỏ ảnh đã chọn</button></div>
+                                </div>
                                 <button class="bg-blue-600 text-white font-bold text-xs rounded-xl px-4 py-2">Đăng bài lên D1</button>
                             </form>
                         </div>
                         <div id="v3FeedStatus" role="status" class="text-xs text-slate-500 px-1">Đang tải bài viết từ Cloudflare D1...</div>
 
-                        <div id="v34ReviewPanel" class="hidden bg-white border border-amber-200 rounded-2xl p-4 sm:p-5 mb-4 shadow-sm"></div>
+                        
                         <div id="v3ProfilePanel" class="hidden bg-white border border-blue-100 rounded-2xl p-4 sm:p-5 mb-4 shadow-sm"></div>
                         <div id="v3FeedList" class="space-y-4"></div>
                     </div>
@@ -498,6 +504,14 @@
 
                 <!-- ==================== VIEW 3: TRUNG TÂM KIỂM DUYỆT (ADMIN & MOD) ==================== -->
                 <div id="viewModContainer" class="hidden space-y-5 fade-in">
+                    <section class="bg-white border border-amber-200 rounded-2xl p-4 shadow-sm">
+                      <div class="flex flex-wrap justify-between items-center gap-2">
+                        <h3 class="font-bold text-amber-900"><i class="fa-solid fa-id-card mr-2"></i>Yêu cầu chỉnh sửa hồ sơ <span id="v34PendingBadge" class="hidden bg-red-600 text-white text-xs rounded-full px-2 py-0.5"></span></h3>
+                        <button type="button" onclick="v34OpenReview()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg px-3 py-2 text-xs">Xem yêu cầu chờ duyệt</button>
+                      </div>
+                      <p class="text-xs text-slate-500 mt-1">Duyệt thay đổi tên, khối, lớp. Chỉ Admin chính được phê duyệt chuyển sang Giáo viên.</p>
+                      <div id="v34ReviewPanel" class="hidden mt-3 border-t border-amber-100 pt-3"></div>
+                    </section>
                     <div class="bg-gradient-to-r from-slate-900 to-blue-950 text-white rounded-2xl shadow-md p-5">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
@@ -1751,6 +1765,7 @@
                 authToken = data.token; sessionStorage.setItem(TOKEN_KEY, authToken);
                 state.currentUser = data.user;
                 state.users = [data.user];
+                state.currentView = 'feed'; // Không kế thừa trang quản trị của tài khoản trước
                 closeModal('loginModal'); form.reset(); renderAll();
                 if (isAdmin()) await refreshAdminUsers();
                 showToast('Đăng nhập thành công!', 'success');
@@ -1777,7 +1792,31 @@
             finally { setCurrentUser(null); showToast('Đã đăng xuất khỏi diễn đàn.', 'info'); }
         }
 
+        function syncAuthorizedViews() {
+            // Luôn khóa giao diện quản trị theo quyền của tài khoản HIỆN TẠI.
+            const staff = !!isStaff();
+            if (!staff && state.currentView === 'moderation') state.currentView = 'feed';
+            const views = {
+                feed: 'viewFeedContainer',
+                my_posts: 'viewMyPostsContainer',
+                moderation: 'viewModContainer'
+            };
+            for (const [view, id] of Object.entries(views)) {
+                const el = document.getElementById(id);
+                if (el) el.classList.toggle('hidden', state.currentView !== view || (view === 'moderation' && !staff));
+            }
+            if (!staff) {
+                const panel = document.getElementById('v34ReviewPanel');
+                if (panel) { panel.classList.add('hidden'); panel.replaceChildren(); }
+                const badge = document.getElementById('v34PendingBadge');
+                if (badge) { badge.textContent = ''; badge.classList.add('hidden'); }
+                const content = document.getElementById('modContentArea');
+                if (content) content.replaceChildren();
+            }
+        }
+
         function renderAll() {
+            syncAuthorizedViews();
             renderHeaderAuth();
             renderNotifications();
             renderSidebarNav();
@@ -1971,25 +2010,32 @@
 
         // --- 10. BỘ LỌC & CHUYỂN ĐỔI VIEW ---
         function filterScope(grade, cls) {
+            window.v3CloseProfilePanel?.();
             state.currentView = 'feed';
             state.filterGrade = grade;
             state.filterClass = cls;
             renderAll();
+            window.v345RefreshNavigation?.();
         }
 
         function filterTopic(topicId) {
+            window.v3CloseProfilePanel?.();
             state.currentView = 'feed';
             state.filterTopic = topicId;
             renderAll();
+            window.v345RefreshNavigation?.();
         }
 
         function filterSubject(sub) {
+            window.v3CloseProfilePanel?.();
             state.currentView = 'feed';
             state.filterSubject = sub;
             renderAll();
+            window.v345RefreshNavigation?.();
         }
 
         function resetFilters() {
+            window.v3CloseProfilePanel?.();
             state.filterGrade = 'all';
             state.filterClass = 'all';
             state.filterTopic = 'all';
@@ -2001,11 +2047,13 @@
         }
 
         function handleSearch(val) {
+            window.v3CloseProfilePanel?.();
             state.searchQuery = val.trim().toLowerCase();
             document.getElementById('searchInputDesktop').value = val;
             document.getElementById('searchInputMobile').value = val;
             if (state.currentView !== 'feed') state.currentView = 'feed';
             renderPostsFeed();
+            window.v345RefreshNavigation?.();
         }
 
         function setSort(sortType) {
@@ -2020,11 +2068,17 @@
         }
 
         function switchView(viewName) {
+            window.v3CloseProfilePanel?.();
+            if (viewName === 'moderation' && !isStaff()) {
+                state.currentView = 'feed';
+                renderAll();
+                showToast('Tài khoản này không có quyền truy cập Trung tâm Kiểm duyệt.', 'warning');
+                return;
+            }
+            if (viewName === 'my_posts' && !state.currentUser) viewName = 'feed';
             state.currentView = viewName;
-            document.getElementById('viewFeedContainer').classList.toggle('hidden', viewName !== 'feed');
-            document.getElementById('viewMyPostsContainer').classList.toggle('hidden', viewName !== 'my_posts');
-            document.getElementById('viewModContainer').classList.toggle('hidden', viewName !== 'moderation');
             renderAll();
+            if (viewName === 'moderation' && isStaff() && typeof v34OpenReview === 'function') v34OpenReview();
         }
 
         function renderBreadcrumb() {
@@ -3343,24 +3397,33 @@
     const setLiked = (id, value) => { try { if(value) localStorage.setItem(likeKey(id), '1'); else localStorage.removeItem(likeKey(id)); } catch (_) {} };
 
     let profileOpenId = null;
+    let profileRequestSerial = 0;
     const profilePanel = () => get('v3ProfilePanel');
+    window.v3CloseProfilePanel = function(){
+        profileRequestSerial++;
+        profileOpenId = null;
+        const panel = profilePanel();
+        if(panel){panel.classList.add('hidden');panel.replaceChildren();}
+    };
     const safeAvatar = v => /^https:\/\/[^\s<>"']+$/i.test(String(v||'')) ? String(v) : '';
     window.v3OpenProfile = async function(id){
         const userId=String(id || state?.currentUser?.id || '');
         if(!userId){showToast('Vui lòng đăng nhập để xem hồ sơ của bạn','warning');return;}
         profileOpenId=userId;
+        const requestSerial=++profileRequestSerial;
         const panel=profilePanel();panel.classList.remove('hidden');
         panel.textContent='Đang tải hồ sơ thành viên...';
         try{
             const own=isLogged() && state.currentUser.id===userId;
             const res=await request(own?'/api/v3/profile/me':'/api/v3/profiles/'+encodeURIComponent(userId));
+            if(requestSerial!==profileRequestSerial || profileOpenId!==userId)return;
             const p=res.profile;
             const locked=!!(p.nextNameChangeAt && Date.now()<p.nextNameChangeAt);
             const avatar=safeAvatar(p.avatar);
             panel.innerHTML=`<div class="flex justify-between gap-2 items-center mb-4"><h3 class="font-bold text-blue-900 text-lg">${own?'Thông tin tài khoản':'Trang cá nhân thành viên'}</h3><button type="button" data-v3-profile-close class="text-slate-500 border rounded-lg px-3 py-1">Đóng ×</button></div>
               <div class="flex gap-3 items-center mb-4">${avatar?`<img class="w-16 h-16 rounded-full object-cover" src="${esc(avatar)}" alt="Avatar" referrerpolicy="no-referrer">`:'<div class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-800 text-2xl">👤</div>'}
                 <div><h4 class="font-bold text-slate-900">${esc(p.fullName)}</h4><p class="text-xs text-slate-500">${esc(p.grade||'')} · ${esc(p.className||'')}</p><p class="text-xs text-slate-500">${Number(p.postCount||0)} bài viết · ${Number(p.commentCount||0)} bình luận</p></div></div>
-              ${own?`<button type="button" onclick="v34OpenReview()" class="mb-3 text-xs text-blue-700 underline">Trung tâm kiểm duyệt yêu cầu hồ sơ (dành cho người có quyền)</button><form id="v3ProfileEdit" class="grid gap-3 text-sm">
+              ${own?`${isStaff()?`<button type="button" onclick="switchView('moderation')" class="mb-3 text-xs text-blue-700 underline">Trung tâm kiểm duyệt yêu cầu hồ sơ</button>`:''}<form id="v3ProfileEdit" class="grid gap-3 text-sm">
                 <label class="grid gap-1">Tên hiển thị <input name="fullName" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.fullName)}" ${locked?'disabled':''}></label>
                 <p class="text-xs ${locked?'text-amber-700':'text-blue-700'}">${locked?'🔒 Bạn được đổi tên tiếp từ '+esc(new Date(p.nextNameChangeAt).toLocaleDateString('vi-VN')):'⚠️ Sau khi đổi tên, bạn phải chờ 60 ngày mới được đổi tiếp.'}</p>
                 <label class="grid gap-1">Khối / vai trò <select name="grade" required class="border rounded-lg p-2" data-v3-grade-select>
@@ -3383,18 +3446,24 @@
         }catch(e){panel.textContent='Không tải được hồ sơ: '+msg(e);}
     };
     window.v34OpenReview=async function(){
+      if (!isStaff()) { if(typeof syncAuthorizedViews==='function') syncAuthorizedViews(); return; }
+      const ownerId=String(state.currentUser.id), ownerToken=authToken;
       const panel=get('v34ReviewPanel');if(!panel)return;panel.classList.remove('hidden');panel.textContent='Đang tải yêu cầu...';
       try{const data=await request('/api/v3/admin/profile-change-requests');
+        // Ngăn phản hồi API của Admin cũ xuất hiện sau khi chuyển tài khoản.
+        if (!isStaff() || String(state.currentUser.id)!==ownerId || authToken!==ownerToken) return;
+        const badge=get('v34PendingBadge');if(badge){const count=(data.requests||[]).length;badge.textContent=count;badge.classList.toggle('hidden',!count);}
         panel.innerHTML='<div class="flex justify-between items-center mb-3"><h3 class="font-bold text-lg">Kiểm duyệt thay đổi hồ sơ</h3><button data-v34-close class="border rounded px-3 py-1">Đóng ×</button></div>'+
         ((data.requests||[]).length?(data.requests||[]).map(r=>'<div class="border rounded-xl p-3 mb-2 text-sm"><p class="font-semibold">'+esc(r.old_name)+' → '+esc(r.new_name)+'</p><p>'+esc(r.old_grade)+' / '+esc(r.old_class_name)+' → <strong>'+esc(r.new_grade)+' / '+esc(r.new_class_name)+'</strong></p>'+
         (r.new_grade==='Giáo viên'&&!data.rootAdmin?'<p class="text-amber-700">Chỉ Admin chính được duyệt yêu cầu Giáo viên.</p>':'')+
         '<div class="flex gap-2 mt-2"><button class="bg-green-700 text-white px-3 py-1 rounded" data-v34-review="approved" data-v34-id="'+esc(r.id)+'">Duyệt</button><button class="bg-red-700 text-white px-3 py-1 rounded" data-v34-review="rejected" data-v34-id="'+esc(r.id)+'">Từ chối</button></div></div>').join(''):'<p>Không có yêu cầu đang chờ.</p>');
         panel.scrollIntoView({behavior:'smooth',block:'start'});
-      }catch(e){panel.textContent='Không thể tải danh sách: '+msg(e);}
+      }catch(e){if(isStaff() && String(state.currentUser.id)===ownerId && authToken===ownerToken)panel.textContent='Không thể tải danh sách: '+msg(e);}
     };
     document.addEventListener('click',async e=>{
       if(e.target.closest('[data-v34-close]')){get('v34ReviewPanel').classList.add('hidden');return;}
       const b=e.target.closest('[data-v34-review]');if(!b)return;
+      if (!isStaff()) { showToast('Không có quyền kiểm duyệt.', 'warning'); return; }
       const decision=b.dataset.v34Review;const note=prompt(decision==='rejected'?'Nhập lý do từ chối:':'Ghi chú phê duyệt (có thể để trống):');if(note===null)return;
       if(decision==='rejected'&&!note.trim()){showToast('Cần nhập lý do từ chối.','warning');return;}
       b.disabled=true;try{await request('/api/v3/admin/profile-change-requests/'+encodeURIComponent(b.dataset.v34Id),'PATCH',{decision,note});showToast('Đã xử lý yêu cầu.','success');await v34OpenReview();}catch(err){showToast(msg(err),'warning');b.disabled=false;}
@@ -3481,7 +3550,7 @@
         finally{btn.disabled=false;}
     });
     document.addEventListener('click',e=>{
-        if(e.target.closest('[data-v3-profile-close]')){profilePanel().classList.add('hidden');profileOpenId=null;}
+        if(e.target.closest('[data-v3-profile-close]'))window.v3CloseProfilePanel();
         const a=e.target.closest('[data-v3-profile-id]');if(a)v3OpenProfile(a.dataset.v3ProfileId);
     });
     function syncAuth(){
@@ -3499,14 +3568,15 @@
     }
     function renderPosts(){
         const list = get('v3FeedList');
-        if(!posts.length){ list.innerHTML='<div class="bg-white rounded-2xl p-5 text-sm text-slate-500">Chưa có bài viết trên D1.</div>'; return; }
-        list.innerHTML = posts.map(raw=>{
+        const visiblePosts=v345VisiblePosts();
+        if(!visiblePosts.length){ list.innerHTML='<div class="bg-white rounded-2xl p-5 text-sm text-slate-500">Chưa có bài viết trên D1.</div>'; return; }
+        list.innerHTML = visiblePosts.map(raw=>{
             const p=normalizePost(raw);
             const id=esc(p.id);
             return `<article class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm">
               <div class="flex justify-between gap-2 items-start"><div><button type="button" data-v3-profile-id="${esc(raw.author_user_id||'')}" class="text-xs font-bold text-blue-700 hover:underline">${esc(p.author)}</button><p class="text-[11px] text-slate-400">${esc(stamp(p.created))} · ${esc(p.topic)}</p></div><span class="text-[10px] text-emerald-700 bg-emerald-50 rounded-full px-2 py-1">D1</span></div>
               <h3 class="font-bold text-slate-900 mt-3">${esc(p.title)}</h3>
-              <p class="text-sm text-slate-700 mt-2 whitespace-pre-wrap break-words">${esc(p.body)}</p>
+              <p class="text-sm text-slate-700 mt-2 whitespace-pre-wrap break-words">${esc(p.body)}</p>${raw.image_url?`<a href="${esc(raw.image_url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(raw.image_url)}" alt="Ảnh bài viết" loading="lazy" class="mt-3 max-h-96 rounded-xl object-contain"></a>`:``}
               <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100">
                 <button type="button" data-v3-reaction="like" data-v3-id="${id}" aria-pressed="${liked(p.id)}" class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition ${liked(p.id) ? 'bg-blue-100 text-blue-700 border-blue-300' : 'text-slate-600 bg-slate-50 hover:bg-blue-50 hover:text-blue-700 border-slate-200'}"><i class="${liked(p.id) ? 'fa-solid' : 'fa-regular'} fa-thumbs-up"></i> ${liked(p.id) ? 'Đã thích' : 'Thích'}${Number(raw.reaction_count ?? 0) > 0 ? ` (${Number(raw.reaction_count)})` : ''}</button>
                 <button type="button" data-v3-comments="${id}" class="text-xs text-blue-700 px-2.5 py-1.5">💬 Bình luận (${esc(p.commentCount)})</button>
@@ -3539,14 +3609,37 @@
             renderAnnouncements();
         } else get('v3Announcements').textContent='Không tải được bảng tin: '+msg(outcomes[1].reason);
     };
+    window.v345PreviewPostImage=function(input){
+        const file=input?.files?.[0], preview=get('v345PostPreview'), img=get('v345PostPreviewImg'),hint=get('v345ImageHint');
+        if(window.v345PreviewUrl){URL.revokeObjectURL(window.v345PreviewUrl);window.v345PreviewUrl=null;}
+        if(!file){preview?.classList.add('hidden');if(img)img.removeAttribute('src');if(hint)hint.textContent='Chọn ảnh JPG, PNG hoặc WebP, tối đa 5 MB.';return;}
+        if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){input.value='';v345PreviewPostImage(input);showToast('Ảnh phải là JPG, PNG hoặc WebP và không quá 5 MB.','warning');return;}
+        window.v345PreviewUrl=URL.createObjectURL(file);img.src=window.v345PreviewUrl;preview.classList.remove('hidden');hint.textContent='Đã chọn: '+file.name;
+    };
+    window.v345RemovePostImage=function(){const input=get('v344PostImage');if(input)input.value='';v345PreviewPostImage(input);};
+    function v345VisiblePosts(){
+        return posts.filter(p=>{
+            const topic=String(p.topic||'');
+            if(state.filterTopic!=='all' && topic!==state.filterTopic)return false;
+            if(state.filterGrade!=='all' && String(p.target_grade||p.targetGrade||'')!==state.filterGrade)return false;
+            if(state.filterClass!=='all' && String(p.target_class||p.targetClass||'')!==state.filterClass)return false;
+            if(state.filterSubject!=='all' && String(p.subject||'')!==state.filterSubject)return false;
+            if(state.searchQuery){const haystack=[p.title,p.body,p.content,p.author_name,p.topic].join(' ').toLowerCase();if(!haystack.includes(state.searchQuery))return false;}
+            return true;
+        });
+    }
+    window.v345RefreshNavigation=function(){
+        const feed=get('viewFeedContainer');
+        if(feed && !feed.classList.contains('hidden'))renderPosts();
+    };
     window.v3CreatePost=async function(e){
         e.preventDefault(); if(!isLogged()){showToast('Vui lòng đăng nhập trước','warning');return;}
         const title=get('v3PostTitle').value.trim(), body=get('v3PostBody').value.trim();
         if(!title||!body)return;
         try{
-            const data=await request('/api/v3/posts','POST',{title,body,topic:get('v3PostTopic').value});
+            const file=get('v344PostImage')?.files?.[0];const imageUrl=file?await v344UploadImage(file,'post'):'';const data=await request('/api/v3/posts','POST',{title,body,topic:get('v3PostTopic').value,imageUrl});
             if(data.ok===false)throw Error(data.error||'Không tạo được bài viết');
-            get('v3PostForm').reset(); showToast('Đã gửi bài viết tới D1 TEST','success'); await v3Refresh();
+            get('v3PostForm').reset();v345RemovePostImage(); showToast('Đã gửi bài viết tới D1 TEST','success'); await v3Refresh();
         }catch(err){showToast('Đăng bài thất bại: '+msg(err),'warning');}
     };
     window.v3PublishAnnouncement=async function(){
@@ -3559,12 +3652,19 @@
             get('v3AnnTitle').value='';get('v3AnnBody').value='';showToast('Đã đăng bảng tin nhanh','success');await v3Refresh();
         }catch(err){showToast('Đăng thông báo thất bại: '+msg(err),'warning');}
     };
+    async function v344UploadImage(file,kind){
+        if(!file)return '';
+        if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024||!file.size)throw Error('Chỉ chọn JPG, PNG hoặc WebP tối đa 5 MB.');
+        const form=new FormData();form.append('file',file);
+        const res=await fetch(AUTH_API+'/api/v3/media/upload?kind='+encodeURIComponent(kind),{method:'POST',headers:{Authorization:'Bearer '+authToken},body:form});
+        const data=await res.json().catch(()=>({}));if(!res.ok||!data.url)throw Error(data.error||'Không tải được ảnh.');return data.url;
+    }
     async function commentsFor(id, box){
         try{
             const data=await request('/api/v3/posts/'+encodeURIComponent(id)+'/comments');
             const arr=Array.isArray(data)?data:(data.comments||[]);
-            box.innerHTML=arr.map(c=>`<div class="bg-slate-50 p-2 rounded-lg text-xs"><strong>${esc(c.author_name||c.authorName||'Thành viên')}</strong><p class="whitespace-pre-wrap break-words">${esc(c.body||c.content||'')}</p></div>`).join('') || '<p class="text-xs text-slate-500">Chưa có bình luận.</p>';
-            if(isLogged())box.innerHTML+=`<form data-v3-comment-form="${esc(id)}" class="flex gap-2"><input required maxlength="2000" name="body" placeholder="Viết bình luận..." class="flex-1 min-w-0 border rounded-lg p-2 text-xs"><button class="bg-blue-600 text-white px-3 rounded-lg text-xs">Gửi</button></form>`;
+            box.innerHTML=arr.map(c=>`<div class="bg-slate-50 p-2 rounded-lg text-xs"><strong>${esc(c.author_name||c.authorName||'Thành viên')}</strong><p class="whitespace-pre-wrap break-words">${esc(c.body||c.content||'')}</p>${c.image_url?`<a href="${esc(c.image_url)}" target="_blank" rel="noopener noreferrer"><img src="${esc(c.image_url)}" alt="Ảnh bình luận của Admin" loading="lazy" class="mt-2 max-w-xs max-h-72 rounded-lg object-contain"></a>`:''}</div>`).join('') || '<p class="text-xs text-slate-500">Chưa có bình luận.</p>';
+            if(isLogged())box.innerHTML+=`<form data-v3-comment-form="${esc(id)}" class="flex flex-wrap gap-2"><input maxlength="2000" name="body" placeholder="Viết bình luận..." class="flex-1 min-w-0 border rounded-lg p-2 text-xs">${isRootAdmin()?'<label class="text-xs text-blue-700 cursor-pointer">📷 Chọn ảnh<input type="file" name="imageFile" accept="image/jpeg,image/png,image/webp" class="block text-xs max-w-48"></label>':''}<button class="bg-blue-600 text-white px-3 rounded-lg text-xs">Gửi</button></form>`;
         }catch(err){box.textContent='Không tải được bình luận: '+msg(err);}
     }
     document.addEventListener('click',async function(e){
@@ -3592,7 +3692,7 @@
     document.addEventListener('submit',async function(e){
         const f=e.target.closest('[data-v3-comment-form]');if(!f)return;
         e.preventDefault();const id=f.dataset.v3CommentForm;
-        try{await request('/api/v3/posts/'+encodeURIComponent(id)+'/comments','POST',{body:f.elements.body.value.trim()});showToast('Đã gửi bình luận','success');await commentsFor(id,f.parentElement);}
+        try{const body=f.elements.body.value.trim(),file=f.elements.imageFile?.files?.[0];if(!body&&!file)throw Error('Nhập bình luận hoặc chọn ảnh.');if(file&&!isRootAdmin())throw Error('Chỉ Admin được bình luận bằng ảnh.');const button=f.querySelector('button[type=submit],button:not([type])');if(button)button.disabled=true;try{const imageUrl=file?await v344UploadImage(file,'comment'):'';await request('/api/v3/posts/'+encodeURIComponent(id)+'/comments','POST',{body,imageUrl});showToast('Đã gửi bình luận','success');await commentsFor(id,f.parentElement);}finally{if(button)button.disabled=false;}}
         catch(err){showToast('Bình luận thất bại: '+msg(err),'warning');}
     });
     window.addEventListener('DOMContentLoaded',()=>{
@@ -3607,7 +3707,8 @@
         const oldLogout=window.handleLogout;
         if(typeof oldLogout==='function')window.handleLogout=async function(...args){await oldLogout(...args);profilePanel().classList.add('hidden');profileOpenId=null;syncAuth();};
         const oldRender=window.renderAll;
-        if(typeof oldRender==='function')window.renderAll=function(...args){const out=oldRender(...args);syncAuth();return out;};
+        if(typeof oldRender==='function')window.renderAll=function(...args){const out=oldRender(...args);syncAuth();v345RefreshNavigation();return out;};
+        const oldSearch=window.handleSearch;if(typeof oldSearch==='function')window.handleSearch=function(...args){const result=oldSearch(...args);v345RefreshNavigation();return result;};
     });
 })();
 </script>
