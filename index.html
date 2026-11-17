@@ -3362,17 +3362,40 @@
               ${own?`<form id="v3ProfileEdit" class="grid gap-3 text-sm">
                 <label class="grid gap-1">Tên hiển thị <input name="fullName" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.fullName)}" ${locked?'disabled':''}></label>
                 <p class="text-xs ${locked?'text-amber-700':'text-blue-700'}">${locked?'🔒 Bạn được đổi tên tiếp từ '+esc(new Date(p.nextNameChangeAt).toLocaleDateString('vi-VN')):'⚠️ Sau khi đổi tên, bạn phải chờ 60 ngày mới được đổi tiếp.'}</p>
-                <label class="grid gap-1">Khối <input name="grade" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.grade||'')}"></label>
-                <label class="grid gap-1">Lớp <input name="className" maxlength="80" required class="border rounded-lg p-2" value="${esc(p.className||'')}"></label>
+                <label class="grid gap-1">Khối / vai trò <select name="grade" required class="border rounded-lg p-2" data-v3-grade-select>
+                  ${['Khối 10','Khối 11','Khối 12','Cựu học sinh','Giáo viên'].map(g=>`<option value="${g}" ${p.grade===g?'selected':''}>${g}</option>`).join('')}
+                </select></label>
+                <label class="grid gap-1">Lớp <input name="className" maxlength="5" required class="border rounded-lg p-2" inputmode="text" placeholder="Ví dụ: 10/9" value="${esc(p.className||'')}" data-v3-class-input></label>
+                <p class="text-xs text-slate-500" data-v3-class-hint>Nhập đúng định dạng: 10/1, 11/5, 12/10 (khối phải trùng với lớp).</p>
                 <div class="grid gap-2 rounded-xl border border-blue-100 bg-blue-50/50 p-3"><label for="v3AvatarFile" class="font-semibold text-blue-900">Ảnh đại diện</label><input id="v3AvatarFile" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*" class="text-xs w-full"/><p class="text-xs text-slate-500">Chọn ảnh từ iPhone, Android hoặc máy tính (ảnh gốc tối đa 20 MB). Ảnh sẽ được cắt vuông và nén trước khi tải lên.</p><img id="v3AvatarPreview" class="hidden w-24 h-24 object-cover rounded-full border-2 border-white shadow" alt="Xem trước avatar"><button type="button" id="v3AvatarUploadBtn" class="rounded-lg bg-blue-600 text-white font-semibold px-3 py-2 disabled:opacity-50" disabled>Tải ảnh đại diện lên</button><p id="v3AvatarStatus" class="text-xs text-slate-600" role="status"></p></div>
                 <label class="grid gap-1">Giới thiệu <textarea name="bio" maxlength="500" class="border rounded-lg p-2" rows="2">${esc(p.bio||'')}</textarea></label>
                 <label class="grid gap-1">Khóa học <input name="schoolYear" maxlength="60" class="border rounded-lg p-2" value="${esc(p.schoolYear||'')}"></label>
                 <p class="text-xs text-slate-500">Email đăng nhập: ${esc(p.email||'')} (không công khai)</p>
                 <button type="submit" class="bg-blue-700 text-white font-semibold rounded-lg p-2">Lưu thông tin</button></form>`:
                 `<p class="text-sm text-slate-600 whitespace-pre-wrap">${esc(p.bio||'Chưa có giới thiệu.')}</p><p class="text-xs text-slate-500 mt-2">Khóa học: ${esc(p.schoolYear||'Chưa cập nhật')}</p>`}`;
+            if(own){const pf=panel.querySelector('#v3ProfileEdit');if(pf)v3SyncProfileClass(pf);}
             panel.scrollIntoView({behavior:'smooth',block:'start'});
         }catch(e){panel.textContent='Không tải được hồ sơ: '+msg(e);}
     };
+    function v3SyncProfileClass(form){
+        const grade=form.elements.grade.value, input=form.elements.className;
+        const student=/^Khối (10|11|12)$/.test(grade);
+        const hint=form.querySelector('[data-v3-class-hint]');
+        if(student){
+            input.disabled=false;input.required=true;input.maxLength=5;
+            input.placeholder='Ví dụ: '+grade.slice(-2)+'/9';
+            input.pattern=grade.slice(-2)+'/[1-9][0-9]?';
+            input.setCustomValidity('');
+            if(!new RegExp('^'+grade.slice(-2)+'/[1-9][0-9]?$').test(input.value.trim()))input.value='';
+            hint.textContent='Nhập lớp '+grade.slice(-2)+' theo mẫu '+grade.slice(-2)+'/1, '+grade.slice(-2)+'/9, '+grade.slice(-2)+'/12 (số lớp 1–99).';
+        }else{
+            input.value='Chung';input.disabled=true;input.required=false;input.removeAttribute('pattern');
+            hint.textContent='Giáo viên và cựu học sinh không cần nhập lớp.';
+        }
+    }
+    document.addEventListener('change',e=>{
+        if(e.target.matches('[data-v3-grade-select]'))v3SyncProfileClass(e.target.form);
+    });
     let v3AvatarBlob=null;
     document.addEventListener('change',async e=>{
         if(e.target?.id!=='v3AvatarFile')return;
@@ -3420,11 +3443,13 @@
         const fullName=f.elements.fullName?.value.trim()||state.currentUser.fullName;
         const changed=fullName!==state.currentUser.fullName;
         if(changed && !confirm('CẢNH BÁO: Sau khi đổi tên thành "'+fullName+'", bạn sẽ KHÔNG được đổi tên tiếp trong 60 ngày. Bạn xác nhận?'))return;
+        const grade=f.elements.grade.value;const cls=f.elements.className.value.trim();
+        if(/^Khối (10|11|12)$/.test(grade) && !new RegExp('^'+grade.slice(-2)+'/[1-9][0-9]?$').test(cls)){showToast('Lớp không đúng định dạng hoặc không khớp khối. Ví dụ: '+grade.slice(-2)+'/9','warning');return;}
         const btn=f.querySelector('[type=submit]');btn.disabled=true;
         try{
             const data=await request('/api/v3/profile/me','PATCH',{
                 ...(changed?{fullName,confirmNameCooldown:true}:{}),
-                grade:f.elements.grade.value.trim(),className:f.elements.className.value.trim(),
+                grade,className:/^Khối (10|11|12)$/.test(grade)?cls:'Chung',
                 bio:f.elements.bio.value.trim(),schoolYear:f.elements.schoolYear.value.trim()});
             state.currentUser=data.user;
             showToast('Đã cập nhật thông tin cá nhân','success');
