@@ -3404,7 +3404,7 @@
         const title=get('v3AnnTitle').value.trim(), body=get('v3AnnBody').value.trim();
         if(!title||!body){showToast('Nhập tiêu đề và nội dung','warning');return;}
         try{
-            const data=await request('/api/v3/announcements','POST',{title,body,publish:true,pinned:false});
+            const data=await request('/api/v3/admin/announcements','POST',{title,body,category:'notice',publish:true,pinned:false});
             if(data.ok===false)throw Error(data.error||'Không đăng được thông báo');
             get('v3AnnTitle').value='';get('v3AnnBody').value='';showToast('Đã đăng bảng tin nhanh','success');await v3Refresh();
         }catch(err){showToast('Đăng thông báo thất bại: '+msg(err),'warning');}
@@ -3422,7 +3422,7 @@
         if(r){
             if(!isLogged()){showToast('Vui lòng đăng nhập để thả cảm xúc','warning');return;}
             r.disabled=true;
-            try{await request('/api/v3/posts/'+encodeURIComponent(r.dataset.v3Id)+'/reactions','POST',{reaction:r.dataset.v3Reaction});showToast('Đã ghi nhận cảm xúc','success');await v3Refresh();}
+            try{await request('/api/v3/posts/'+encodeURIComponent(r.dataset.v3Id)+'/reaction','PUT',{reaction:r.dataset.v3Reaction});showToast('Đã ghi nhận cảm xúc','success');await v3Refresh();}
             catch(err){showToast('Không thể thả cảm xúc: '+msg(err),'warning');}
             finally{r.disabled=false;}
             return;
