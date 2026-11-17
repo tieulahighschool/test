@@ -823,6 +823,26 @@
     </div>
 
     <!-- ==================== MODAL KHÓA TÀI KHOẢN VI PHẠM (NHẬP LÝ DO) ==================== -->
+    <!-- Hộp thoại bổ nhiệm chức vụ: chỉ thay đổi giao diện, giữ nguyên API V2 -->
+    <div id="appointmentModal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-labelledby="appointmentModalTitle">
+        <form onsubmit="submitAppointment(event)" class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md space-y-4">
+            <div class="flex items-center justify-between gap-3">
+                <h2 id="appointmentModalTitle" class="font-extrabold text-lg text-slate-900"><i class="fa-solid fa-user-gear text-indigo-600 mr-2"></i>Bổ nhiệm chức vụ</h2>
+                <button type="button" onclick="closeModal('appointmentModal')" aria-label="Đóng" class="text-slate-500 hover:text-slate-900 text-xl">&times;</button>
+            </div>
+            <p class="text-sm text-slate-600">Thành viên: <strong id="appointmentUserName" class="text-slate-900"></strong></p>
+            <input id="appointmentUserId" type="hidden">
+            <label for="appointmentRoleSelect" class="block text-sm font-bold text-slate-700">Chọn chức vụ</label>
+            <select id="appointmentRoleSelect" required onchange="document.getElementById('appointmentRolePreview').textContent = HONOR_ROLES[this.value] || ''" class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+            <div class="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-800">Chức vụ đã chọn: <strong id="appointmentRolePreview"></strong></div>
+            <p class="text-xs text-slate-500">Chọn “Thành viên thường” để thu hồi chức vụ đã bổ nhiệm. Việc bổ nhiệm không tự động cấp quyền quản trị hệ thống.</p>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeModal('appointmentModal')" class="px-4 py-2 rounded-xl bg-slate-100 font-semibold text-slate-700">Hủy</button>
+                <button id="appointmentSaveButton" type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-50">Lưu chức vụ</button>
+            </div>
+        </form>
+    </div>
+
     <div id="banUserModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden fade-in">
             <div class="bg-slate-900 px-5 py-4 text-white flex items-center justify-between">
@@ -2932,17 +2952,46 @@
         const HONOR_ROLES = {none:'Thành viên thường',deputy_admin:'Phó Quản trị',moderator:'Kiểm duyệt viên',academic_manager:'Ban Học tập',class_leader:'Ban Cán sự lớp'};
         const HONOR_BADGES = {excellent:'🏆 Thành viên xuất sắc',student:'🎓 Học sinh tiêu biểu',contributor:'⭐ Đóng góp tích cực',honorary:'💎 Thành viên danh dự',kindness:'❤️ Trái tim nhân ái',academic:'📚 Chuyên gia học tập',service:'🎖️ Cống hiến lâu năm'};
         function honorRoleLabel(role) { return role ? '🎗️ '+(HONOR_ROLES[role]||'') : ''; }
-        async function manageAppointment(userId) {
+        function manageAppointment(userId) {
             if (!isAdmin()) return;
-            const u=state.users.find(x=>x.id===userId); if(!u)return;
-            const choices=Object.entries(HONOR_ROLES).map(([k,v])=>`${k} = ${v}`).join('\n');
-            const role=prompt(`Bổ nhiệm cho ${u.fullName}\nNhập mã chức vụ:\n${choices}`,honorRoles[userId]||'none');
-            if(role===null)return;
-            if(!Object.hasOwn(HONOR_ROLES,role)){alert('Mã chức vụ không hợp lệ.');return;}
-            if(!confirm(`Xác nhận chức vụ: ${HONOR_ROLES[role]}?`))return;
-            try {const r=await apiRequest('/api/admin/users/'+encodeURIComponent(userId)+'/appointment','POST',{role});
-                showToast(r.message||'Đã cập nhật chức vụ.','success');await refreshAdminUsers();}
-            catch(e){showToast(e.message,'error');}
+            const u = state.users.find(x => x.id === userId);
+            if (!u) return;
+            const modal = document.getElementById('appointmentModal');
+            const select = document.getElementById('appointmentRoleSelect');
+            document.getElementById('appointmentUserName').textContent = u.fullName || u.username || 'Thành viên';
+            document.getElementById('appointmentUserId').value = userId;
+            select.replaceChildren();
+            Object.entries(HONOR_ROLES).forEach(([code, label]) => {
+                const option = document.createElement('option');
+                option.value = code;
+                option.textContent = label;
+                select.appendChild(option);
+            });
+            select.value = Object.hasOwn(HONOR_ROLES, honorRoles[userId]) ? honorRoles[userId] : 'none';
+            document.getElementById('appointmentRolePreview').textContent = HONOR_ROLES[select.value];
+            document.getElementById('appointmentSaveButton').disabled = false;
+            openModal('appointmentModal');
+            select.focus();
+        }
+        async function submitAppointment(event) {
+            event.preventDefault();
+            if (!isAdmin()) return;
+            const userId = document.getElementById('appointmentUserId').value;
+            const role = document.getElementById('appointmentRoleSelect').value;
+            if (!Object.hasOwn(HONOR_ROLES, role)) { showToast('Chức vụ không hợp lệ.', 'error'); return; }
+            const button = document.getElementById('appointmentSaveButton');
+            if (button.disabled) return;
+            button.disabled = true;
+            try {
+                const r = await apiRequest('/api/admin/users/' + encodeURIComponent(userId) + '/appointment', 'POST', {role});
+                closeModal('appointmentModal');
+                showToast(r.message || 'Đã cập nhật chức vụ.', 'success');
+                await refreshAdminUsers();
+            } catch(e) {
+                showToast(e.message || 'Không thể cập nhật chức vụ.', 'error');
+            } finally {
+                button.disabled = false;
+            }
         }
         async function manageBadge(userId) {
             if(!isAdmin())return;
@@ -3191,6 +3240,7 @@
             if (e.target.id === 'registerModal') closeModal('registerModal');
             if (e.target.id === 'rejectPostModal') closeModal('rejectPostModal');
             if (e.target.id === 'banUserModal') closeModal('banUserModal');
+            if (e.target.id === 'appointmentModal') closeModal('appointmentModal');
             if (e.target.id === 'reportModal') closeModal('reportModal');
 
             const notifWrapper = document.getElementById('notificationWrapper');
